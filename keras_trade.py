@@ -1,4 +1,5 @@
 #!/usr/bin/python
+# -*- coding: utf-8 -*-
 from __future__ import absolute_import
 
 import numpy as np
@@ -23,15 +24,19 @@ OUTPUT_LEN = 5
 TRAINDATA_DIV = 10
 CHART_TYPE_JDG_LEN = 25
 
+# 学習用データ
 def preprocess_data(X, scaler=None):
     if not scaler:
+        #標準化
         scaler = StandardScaler()
         scaler.fit(X)
     X = scaler.transform(X)
     return X, scaler
-    
+
+#教師ラベル
 def preprocess_labels(labels, encoder=None, categorical=True):
     if not encoder:
+        #カテゴリカルデータを、数値(ラベル)で表現する
         encoder = LabelEncoder()
         encoder.fit(labels)
     y = encoder.transform(labels).astype(np.int32)
@@ -39,15 +44,16 @@ def preprocess_labels(labels, encoder=None, categorical=True):
         y = np_utils.to_categorical(y)
     return y, encoder
 
-
+#CSVのデータを統合する
 def merge_csv(out_fname, input_files):
+    #書き出すファイル
     frslt = open('./hoge.csv', 'w')        
     frslt.write("Date Time,Open,High,Low,Close,Volume,Adj Close\n")
 
     for iname in input_files:
-        fd = open(iname, 'r')
+        fd = open('./data/'+iname, 'r')
         for trxline in fd:
-            splited = trxline.split(",")
+            splited = trxline.split(";")
             if splited[0] != "<DTYYYYMMDD>" and splited[0] != "204/04/26" and splited[0] != "20004/04/26":
                 time = splited[0].replace("/", "-") + " " + splited[1]
                 val = splited[2]
@@ -58,13 +64,17 @@ def merge_csv(out_fname, input_files):
 
     frslt.close()
 
+#チャートの形の判断
 # 0->flat 1->upper line 2-> downer line 3->above is top 4->below is top
+# ToDo:: data_arrが何かを調べる(期間とか)
 def judge_chart_type(data_arr):
+    #更新用変数。最大値を0最小値を無限
     max_val = 0
     min_val = float("inf")
 
     last_idx = len(data_arr)-1
     
+    # data_arr内のmaxとminの値と位置を更新
     for idx in xrange(len(data_arr)):
         if data_arr[idx] > max_val:
             max_val = data_arr[idx]
@@ -78,23 +88,31 @@ def judge_chart_type(data_arr):
     if max_val == min_val:
         return 0
     
+    # 最初がminで最後がmaxの場合は右肩上がり(upper line)
     if min_idx == 0 and max_idx == last_idx:
         return 1
 
+    # 最初がmaxで最後がminの場合は右肩下がり
     if max_idx == 0 and min_idx == last_idx:
         return 2
 
+    # 途中にmaxとminがある場合
     if max_idx != 0 and max_idx != last_idx and min_idx != 0 and min_idx != last_idx:
         return 0
     
+    # maxが途中にあり、minは最初か最後にある場合
     if max_idx != 0 and max_idx != last_idx:
         return 3
 
+    # minが途中にあり、maxは最初か最後にある場合
     if min_idx != 0 and min_idx != last_idx:
         return 4
         
     return 0
 
+
+# ここから下はテクニカル指標の関数
+# ToDo :: それぞれの中身、期間をチェックする
 def get_rsi(price_arr, cur_pos, period = 40):
     if cur_pos <= period:
 #        s = 0
@@ -225,12 +243,16 @@ def get_macd(price_arr, cur_pos, period = 100):
 """
 main
 """
-arr = ["USDJPY_M5_2001.txt","USDJPY_M5_2002.txt","USDJPY_M5_2003.txt","USDJPY_M5_2004.txt","USDJPY_M5_2005.txt","USDJPY_M5_2006.txt","USDJPY_M5_2007.txt","USDJPY_M5_2008.txt"]
+# 読み込ませて統合するCSV一覧
+arr = ["DAT_ASCII_USDJPY_M1_2000.csv","DAT_ASCII_USDJPY_M1_2001.csv","DAT_ASCII_USDJPY_M1_2002.csv","DAT_ASCII_USDJPY_M1_2003.csv","DAT_ASCII_USDJPY_M1_2004.csv","DAT_ASCII_USDJPY_M1_2005.csv","DAT_ASCII_USDJPY_M1_2006.csv","DAT_ASCII_USDJPY_M1_2007.csv","DAT_ASCII_USDJPY_M1_2008.csv","DAT_ASCII_USDJPY_M1_2009.csv","DAT_ASCII_USDJPY_M1_2010.csv","DAT_ASCII_USDJPY_M1_2011.csv","DAT_ASCII_USDJPY_M1_2012.csv","DAT_ASCII_USDJPY_M1_2013.csv","DAT_ASCII_USDJPY_M1_2014.csv","DAT_ASCII_USDJPY_M1_2015.csv"]
 merge_csv("hoge", arr)
 
 rates_fd = open('./hoge.csv', 'r')
 exchange_dates = []
 exchange_rates = []
+
+
+#時間と高値のデータを追加
 for line in rates_fd:
     splited = line.split(",")
     if splited[2] != "High" and splited[0] != "<DTYYYYMMDD>"and splited[0] != "204/04/26" and splited[0] != "20004/04/26":
@@ -239,20 +261,27 @@ for line in rates_fd:
         exchange_dates.append(time)
         exchange_rates.append(val)
 
+
+# 1つ前との差を記録する配列
+# prev_orgは1つ前のデータを持つ変数
+# 
+
 reverse_exchange_rates = []
 prev_org = -1
 prev = -1
 for rate in exchange_rates:
     if prev_org != -1:
         diff = rate - prev_org
-        reverse_exchange_rates.append(prev - diff)
         prev_org = rate
         prev = prev - diff
-    else:
+        reverse_exchange_rates.append(prev)
+        
+    else:　#最初はこちらに入る
         reverse_exchange_rates.append(rate)
         prev_org = rate
         prev = rate
 
+# TRAINDATA_DIVで割っているのがわからない
 data_len = len(exchange_rates)
 train_len = len(exchange_rates)/TRAINDATA_DIV
 
